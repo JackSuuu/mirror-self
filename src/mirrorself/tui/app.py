@@ -223,6 +223,10 @@ class ChatInput(TextArea):
     Chinese/Japanese/Korean IME-compatible input widget.
     TextArea handles IME composition (sent as paste events) correctly.
     Enter submits; Shift+Enter inserts a newline.
+    Digits 0-9 are suppressed when the text ends with a short run of ASCII
+    letters (pinyin in composition), so the IME delivers the committed
+    Chinese character via a paste event rather than Textual inserting the
+    raw digit.
     """
 
     class Submitted(Message):
@@ -241,17 +245,30 @@ class ChatInput(TextArea):
         )
 
     def _on_key(self, event: events.Key) -> None:
-        if event.key == "ctrl+s":
+        if event.key == "enter":
             event.prevent_default()
             event.stop()
             text = self.text.strip()
             if text:
                 self.post_message(self.Submitted(text))
                 self.load_text("")
-        elif event.key == "enter":
-            # Do NOT intercept Enter — leave it free for IME composition commit
-            # and for inserting newlines. Use Ctrl+S to send.
-            pass
+        elif event.key == "shift+enter":
+            event.prevent_default()
+            event.stop()
+            self.insert("\n")
+        elif (event.character or "") in "0123456789":
+            # When the text ends with a short run of ASCII alpha chars
+            # (e.g. "ni", "hao") the user is likely mid-IME composition.
+            # Suppress the raw digit so the IME can commit via paste event.
+            n = 0
+            for ch in reversed(self.text):
+                if ch.isascii() and ch.isalpha():
+                    n += 1
+                else:
+                    break
+            if 1 <= n <= 10:
+                event.prevent_default()
+                event.stop()
 
 
 # ── Memory entry widget ────────────────────────────────────────────────────────
@@ -278,10 +295,10 @@ MODES = [
 ]
 
 MODE_HINTS = {
-    "chat":    "Chat — Ctrl+S to send  •  中文：空格选字，Enter 换行",
-    "reflect": "Reflect — Ctrl+S to send",
-    "compare": "Timeline — type a topic, Ctrl+S to search",
-    "pattern": "Patterns — describe your state, Ctrl+S to send",
+    "chat":    "Chat — Enter to send  •  中文：空格/数字选字，Shift+Enter 换行",
+    "reflect": "Reflect — Enter to send",
+    "compare": "Timeline — type a topic, Enter to search",
+    "pattern": "Patterns — describe your state, Enter to send",
 }
 
 
@@ -311,7 +328,6 @@ class MirrorSelfApp(App):
         Binding("f2", "set_mode('reflect')", "Reflect",  show=True),
         Binding("f3", "set_mode('compare')", "Timeline", show=True),
         Binding("f4", "set_mode('pattern')", "Patterns", show=True),
-        Binding("ctrl+s", "submit_input",    "Send",     show=True),
         Binding("ctrl+q", "quit",       "Quit",  show=True),
         Binding("ctrl+l", "clear_chat", "Clear", show=False),
     ]
@@ -357,7 +373,7 @@ class MirrorSelfApp(App):
         log.write(
             f"[bold #f0b429]mirror-self[/] [#606880]— the observer is ready[/]\n"
             f"[#404860]Everything {name} has written — read, indexed, ready.[/]\n"
-            f"[#2d3050]Ctrl+S to send  •  Enter for newline / 中文候选确认  •  ⌘V to paste[/]\n"
+            f"[#2d3050]Enter to send  •  Shift+Enter for newline  •  中文：空格/数字选字[/]\n"
         )
 
     # ── Mode switching ─────────────────────────────────────────────────────────
@@ -531,14 +547,6 @@ class MirrorSelfApp(App):
 
     # ── Actions ───────────────────────────────────────────────────────────────
 
-    def action_submit_input(self) -> None:
-        """Ctrl+S: submit the current input (IME-safe alternative to Enter)."""
-        inp = self.query_one("#user-input", ChatInput)
-        text = inp.text.strip()
-        if text and not self._streaming:
-            self._handle_send(text)
-            inp.load_text("")
-
     def action_clear_chat(self) -> None:
         if self._streaming:
             return
@@ -553,6 +561,13 @@ class MirrorSelfApp(App):
 # ── Entry point ───────────────────────────────────────────────────────────────
 
 def run(mode: str = "chat") -> None:
+    # Disable the Kitty keyboard protocol so the OS-level IME (Chinese input)
+    # can work. constants.DISABLE_KITTY_KEY is evaluated once at import time,
+    # so os.environ is too late — we must patch the live constant directly
+    # before App.run() initialises the terminal driver.
+    from textual import constants as _tc
+    _tc.DISABLE_KITTY_KEY = True  # type: ignore[assignment]
+
     conf = cfg.load()
     from mirrorself.core.indexer import collection_stats
     conf["_stats"] = collection_stats(conf)
