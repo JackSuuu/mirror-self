@@ -143,23 +143,19 @@ LoadingWidget.visible {
 
 /* ── Input area ── */
 #input-area {
-    height: 5;
-    background: #1a1d2e;
+    height: 4;
+    background: #1e2140;
     border-top: solid #2d3561;
-}
-
-#mode-hint {
-    height: 1;
-    padding: 0 2;
-    color: #3a3f60;
-    background: #1a1d2e;
 }
 
 ChatInput {
     background: #1e2140;
     color: #e0e4f8;
-    border: none;
-    height: 4;
+    border-top: none;
+    border-right: none;
+    border-bottom: none;
+    border-left: none;
+    height: 1fr;
     padding: 0 2;
     scrollbar-color: transparent;
     scrollbar-background: transparent;
@@ -245,17 +241,17 @@ class ChatInput(TextArea):
         )
 
     def _on_key(self, event: events.Key) -> None:
-        if event.key == "enter":
+        if event.key == "ctrl+s":
             event.prevent_default()
             event.stop()
             text = self.text.strip()
             if text:
                 self.post_message(self.Submitted(text))
                 self.load_text("")
-        elif event.key == "shift+enter":
-            event.prevent_default()
-            event.stop()
-            self.insert("\n")
+        elif event.key == "enter":
+            # Do NOT intercept Enter — leave it free for IME composition commit
+            # and for inserting newlines. Use Ctrl+S to send.
+            pass
 
 
 # ── Memory entry widget ────────────────────────────────────────────────────────
@@ -282,10 +278,10 @@ MODES = [
 ]
 
 MODE_HINTS = {
-    "chat":    "Ask anything — Enter to send, Shift+Enter for newline",
-    "reflect": "Reflection questions generated automatically",
-    "compare": "Type a topic to compare across all years",
-    "pattern": "Describe your current state — find historical parallels",
+    "chat":    "Chat — Ctrl+S to send  •  中文：空格选字，Enter 换行",
+    "reflect": "Reflect — Ctrl+S to send",
+    "compare": "Timeline — type a topic, Ctrl+S to search",
+    "pattern": "Patterns — describe your state, Ctrl+S to send",
 }
 
 
@@ -315,6 +311,7 @@ class MirrorSelfApp(App):
         Binding("f2", "set_mode('reflect')", "Reflect",  show=True),
         Binding("f3", "set_mode('compare')", "Timeline", show=True),
         Binding("f4", "set_mode('pattern')", "Patterns", show=True),
+        Binding("ctrl+s", "submit_input",    "Send",     show=True),
         Binding("ctrl+q", "quit",       "Quit",  show=True),
         Binding("ctrl+l", "clear_chat", "Clear", show=False),
     ]
@@ -343,7 +340,6 @@ class MirrorSelfApp(App):
                 yield Static("📎 Memories", id="memory-title", markup=True)
                 yield ScrollableContainer(id="memory-scroll")
         with Vertical(id="input-area"):
-            yield Static(MODE_HINTS["chat"], id="mode-hint", markup=False)
             yield ChatInput(placeholder=MODE_HINTS["chat"], id="user-input")
         yield Footer()
 
@@ -361,6 +357,7 @@ class MirrorSelfApp(App):
         log.write(
             f"[bold #f0b429]mirror-self[/] [#606880]— the observer is ready[/]\n"
             f"[#404860]Everything {name} has written — read, indexed, ready.[/]\n"
+            f"[#2d3050]Ctrl+S to send  •  Enter for newline / 中文候选确认  •  ⌘V to paste[/]\n"
         )
 
     # ── Mode switching ─────────────────────────────────────────────────────────
@@ -371,7 +368,6 @@ class MirrorSelfApp(App):
         self.mode = mode
         self.query_one(ModeBar).set_active(mode)
         hint = MODE_HINTS.get(mode, "")
-        self.query_one("#mode-hint", Static).update(hint)
         inp = self.query_one("#user-input", ChatInput)
         inp.placeholder = hint
         log = self.query_one("#chat-log", RichLog)
@@ -534,6 +530,14 @@ class MirrorSelfApp(App):
             scroll.mount(MemoryEntry(entry))
 
     # ── Actions ───────────────────────────────────────────────────────────────
+
+    def action_submit_input(self) -> None:
+        """Ctrl+S: submit the current input (IME-safe alternative to Enter)."""
+        inp = self.query_one("#user-input", ChatInput)
+        text = inp.text.strip()
+        if text and not self._streaming:
+            self._handle_send(text)
+            inp.load_text("")
 
     def action_clear_chat(self) -> None:
         if self._streaming:
