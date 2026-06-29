@@ -6,7 +6,7 @@
 
 No data ever leaves your computer. Everything runs locally via [Ollama](https://ollama.ai).
 
-![mirror-self demo](https://raw.githubusercontent.com/JackSuuu/mirror-self/main/assets/demo.png)
+![mirror-self demo](./banner.png)
 
 ---
 
