@@ -1,0 +1,1169 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>mirror-self — 把记录，变成观察</title>
+  <meta name="description" content="将你的日记索引成本地向量数据库，与过去的自己展开深度对话。完全本地运行，数据永远不离开你的设备。">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Noto+Sans+SC:wght@300;400;500;700&display=swap" rel="stylesheet">
+
+  <style>
+    /* ============================================================
+       VARIABLES
+    ============================================================ */
+    :root {
+      --bg-primary:    #070c1a;
+      --bg-secondary:  #0d1629;
+      --bg-card:       #0f1a2e;
+      --bg-terminal:   #090f1c;
+      --border:        #162035;
+      --border-bright: #1e2f4e;
+      --text-primary:  #e2e8f4;
+      --text-secondary:#7b8fb5;
+      --text-muted:    #3d4f6b;
+      --blue:          #4a9eff;
+      --cyan:          #38c7ff;
+      --amber:         #f0b429;
+      --green:         #22c55e;
+      --purple:        #a78bfa;
+    }
+
+    /* ============================================================
+       RESET & BASE
+    ============================================================ */
+    *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+    html { scroll-behavior: smooth; }
+
+    body {
+      background-color: var(--bg-primary);
+      background-image: radial-gradient(rgba(74,158,255,.025) 1px, transparent 1px);
+      background-size: 28px 28px;
+      color: var(--text-primary);
+      font-family: 'Noto Sans SC', -apple-system, BlinkMacSystemFont, 'PingFang SC', sans-serif;
+      line-height: 1.7;
+      overflow-x: hidden;
+    }
+
+    a { color: inherit; text-decoration: none; }
+
+    /* ============================================================
+       NOISE OVERLAY
+    ============================================================ */
+    body::after {
+      content: '';
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 999;
+      opacity: .018;
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+    }
+
+    /* ============================================================
+       NAV
+    ============================================================ */
+    nav {
+      position: fixed;
+      top: 0; left: 0; right: 0;
+      z-index: 100;
+      height: 62px;
+      padding: 0 2.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: rgba(7,12,26,.88);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border-bottom: 1px solid rgba(22,32,53,.9);
+    }
+
+    .nav-logo {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 1rem;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: .4rem;
+    }
+    .nav-logo .sym { color: var(--blue); }
+
+    .nav-links {
+      list-style: none;
+      display: flex;
+      align-items: center;
+      gap: 2rem;
+    }
+    .nav-links a {
+      font-size: .875rem;
+      color: var(--text-secondary);
+      transition: color .2s;
+    }
+    .nav-links a:hover { color: var(--text-primary); }
+
+    .nav-gh {
+      display: inline-flex;
+      align-items: center;
+      gap: .4rem;
+      padding: .35rem .9rem;
+      border: 1px solid var(--border-bright);
+      border-radius: 6px;
+      font-size: .8rem !important;
+      color: var(--text-secondary) !important;
+      transition: border-color .2s, color .2s !important;
+    }
+    .nav-gh:hover { border-color: var(--blue) !important; color: var(--blue) !important; }
+
+    /* ============================================================
+       HERO
+    ============================================================ */
+    #hero {
+      min-height: 100vh;
+      padding: 130px 2.5rem 90px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      position: relative;
+      overflow: hidden;
+    }
+
+    /* ambient glows */
+    #hero .glow-left {
+      position: absolute;
+      top: -15%; left: -8%;
+      width: 55%; height: 70%;
+      background: radial-gradient(ellipse, rgba(74,158,255,.065) 0%, transparent 68%);
+      pointer-events: none;
+    }
+    #hero .glow-right {
+      position: absolute;
+      bottom: -10%; right: -5%;
+      width: 45%; height: 60%;
+      background: radial-gradient(ellipse, rgba(56,199,255,.04) 0%, transparent 70%);
+      pointer-events: none;
+    }
+
+    .hero-inner {
+      max-width: 1180px;
+      width: 100%;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4.5rem;
+      align-items: center;
+      position: relative;
+      z-index: 1;
+    }
+
+    /* pill badge */
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: .45rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .7rem;
+      color: var(--blue);
+      padding: .25rem .75rem;
+      border: 1px solid rgba(74,158,255,.28);
+      border-radius: 100px;
+      background: rgba(74,158,255,.05);
+      margin-bottom: 1.4rem;
+    }
+    .badge .dot {
+      width: 5px; height: 5px;
+      background: var(--green);
+      border-radius: 50%;
+      animation: pulse 2s infinite;
+    }
+    @keyframes pulse {
+      0%,100% { opacity: 1; }
+      50%      { opacity: .25; }
+    }
+
+    .hero-h1 {
+      font-size: clamp(2.4rem, 4.5vw, 4rem);
+      font-weight: 700;
+      line-height: 1.15;
+      letter-spacing: -.025em;
+      margin-bottom: 1.25rem;
+    }
+    .hero-h1 .hl { color: var(--blue); }
+
+    .hero-sub {
+      font-size: 1.025rem;
+      color: var(--text-secondary);
+      font-weight: 300;
+      line-height: 1.85;
+      max-width: 460px;
+      margin-bottom: 2.5rem;
+    }
+    .hero-sub strong { color: var(--text-primary); font-weight: 400; }
+
+    /* install pill */
+    .install-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: .6rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border-bright);
+      border-radius: 7px;
+      padding: .65rem 1.1rem;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .85rem;
+      color: var(--green);
+      user-select: all;
+      cursor: text;
+      margin-bottom: 1.25rem;
+      transition: border-color .2s;
+    }
+    .install-pill:hover { border-color: rgba(74,158,255,.4); }
+    .install-pill .prompt { color: var(--blue); }
+
+    .cta-row { display: flex; gap: .85rem; align-items: center; }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: .4rem;
+      padding: .6rem 1.4rem;
+      border-radius: 6px;
+      font-size: .875rem;
+      font-family: 'Noto Sans SC', sans-serif;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .btn-solid {
+      background: var(--blue);
+      color: #070c1a;
+      border: 1px solid var(--blue);
+      font-weight: 500;
+    }
+    .btn-solid:hover { background: #6ab2ff; transform: translateY(-1px); }
+    .btn-outline {
+      background: transparent;
+      color: var(--text-secondary);
+      border: 1px solid var(--border-bright);
+    }
+    .btn-outline:hover { border-color: var(--blue); color: var(--blue); }
+
+    /* ============================================================
+       TERMINAL MOCKUP
+    ============================================================ */
+    .term-wrap {
+      background: var(--bg-terminal);
+      border: 1px solid var(--border-bright);
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow:
+        0 0 0 1px rgba(74,158,255,.08),
+        0 28px 72px rgba(0,0,0,.55),
+        0 0 80px rgba(74,158,255,.04);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    .term-bar {
+      background: #0b1524;
+      padding: .55rem 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border);
+    }
+    .term-bar-title {
+      font-size: .72rem;
+      color: var(--blue);
+      display: flex;
+      align-items: center;
+      gap: .35rem;
+    }
+    .term-dots { display: flex; gap: .4rem; }
+    .td { width: 11px; height: 11px; border-radius: 50%; }
+    .td-r { background: #ff5f57; }
+    .td-y { background: #febc2e; }
+    .td-g { background: #28c840; }
+
+    .term-grid {
+      display: grid;
+      grid-template-columns: 1fr 1.35fr;
+      min-height: 310px;
+    }
+
+    .term-left {
+      padding: 1.1rem .9rem;
+      border-right: 1px solid var(--border);
+    }
+    .term-sect { font-size: .62rem; color: var(--blue); letter-spacing: .1em; margin-bottom: .85rem; }
+
+    .t-mode {
+      padding: .45rem .55rem;
+      border-radius: 4px;
+      margin-bottom: .6rem;
+    }
+    .t-mode.active {
+      background: rgba(74,158,255,.13);
+      border: 1px solid rgba(74,158,255,.28);
+    }
+    .t-mode-name {
+      font-size: .72rem;
+      font-weight: 600;
+      color: var(--text-muted);
+      display: flex;
+      align-items: center;
+      gap: .3rem;
+    }
+    .t-mode.active .t-mode-name { color: var(--blue); }
+    .t-mode.active .t-mode-name::before { content: '> '; color: var(--blue); }
+    .t-mode-desc { font-size: .62rem; color: var(--text-muted); margin-top: .15rem; line-height: 1.4; }
+
+    .term-right { padding: 1.1rem 1rem; }
+    .t-label { font-size: .62rem; color: var(--blue); margin-bottom: .25rem; margin-top: .7rem; }
+    .t-label:first-child { margin-top: 0; }
+    .t-val { font-size: .7rem; color: var(--text-secondary); line-height: 1.65; }
+    .t-ok { color: var(--green); }
+
+    .t-prompt {
+      margin-top: 1.1rem;
+      display: flex;
+      align-items: center;
+      gap: .35rem;
+      font-size: .72rem;
+      color: var(--text-muted);
+    }
+    .t-prompt .sym { color: var(--blue); }
+    .cursor {
+      display: inline-block;
+      width: 7px; height: 13px;
+      background: var(--blue);
+      border-radius: 1px;
+      vertical-align: middle;
+      animation: blink 1.1s step-end infinite;
+    }
+    @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0; } }
+
+    /* ============================================================
+       SECTION SKELETON
+    ============================================================ */
+    .section-wrap {
+      max-width: 1180px;
+      margin: 0 auto;
+      padding: 96px 2.5rem;
+    }
+
+    hr.divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 0 2.5rem;
+    }
+
+    .sec-eyebrow {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .68rem;
+      color: var(--blue);
+      letter-spacing: .12em;
+      text-transform: uppercase;
+      margin-bottom: 1rem;
+      display: flex;
+      align-items: center;
+      gap: .4rem;
+    }
+    .sec-eyebrow::before { content: '//'; color: var(--text-muted); }
+
+    .sec-h2 {
+      font-size: clamp(1.75rem, 3vw, 2.6rem);
+      font-weight: 700;
+      line-height: 1.2;
+      letter-spacing: -.02em;
+      margin-bottom: .85rem;
+    }
+    .sec-sub {
+      font-size: .95rem;
+      color: var(--text-secondary);
+      font-weight: 300;
+      max-width: 580px;
+      line-height: 1.85;
+    }
+
+    /* ============================================================
+       ORIGIN SECTION
+    ============================================================ */
+    #origin {
+      background: linear-gradient(160deg, rgba(74,158,255,.025) 0%, transparent 60%);
+    }
+
+    .origin-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5rem;
+      margin-top: 3.5rem;
+      align-items: start;
+    }
+
+    .origin-quote {
+      font-size: clamp(1.35rem, 2.2vw, 1.75rem);
+      font-weight: 500;
+      line-height: 1.6;
+      color: var(--text-primary);
+      padding-left: 1.5rem;
+      border-left: 2px solid var(--blue);
+      margin-bottom: 2rem;
+    }
+    .origin-quote em { font-style: normal; color: var(--blue); }
+
+    .flow {
+      display: flex;
+      align-items: center;
+      gap: .6rem;
+      flex-wrap: wrap;
+    }
+    .flow-node {
+      display: flex;
+      align-items: center;
+      gap: .4rem;
+      padding: .4rem .8rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 6px;
+      font-size: .8rem;
+      color: var(--text-secondary);
+    }
+    .flow-node.active {
+      border-color: rgba(74,158,255,.35);
+      background: rgba(74,158,255,.07);
+      color: var(--blue);
+    }
+    .flow-arr { color: var(--blue); font-family: 'JetBrains Mono', monospace; }
+
+    .origin-text {
+      font-size: .92rem;
+      color: var(--text-secondary);
+      font-weight: 300;
+      line-height: 1.95;
+    }
+    .origin-text p + p { margin-top: 1.2rem; }
+    .origin-text strong { color: var(--text-primary); font-weight: 500; }
+
+    /* persona callout */
+    .persona-box {
+      margin-top: 2rem;
+      padding: 1.2rem 1.4rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border-bright);
+      border-radius: 8px;
+      border-left: 3px solid var(--blue);
+    }
+    .persona-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .65rem;
+      color: var(--blue);
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      margin-bottom: .5rem;
+    }
+    .persona-text {
+      font-size: .85rem;
+      color: var(--text-secondary);
+      font-weight: 300;
+      line-height: 1.7;
+      font-style: italic;
+    }
+
+    /* ============================================================
+       FEATURES
+    ============================================================ */
+    .modes-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 1.25rem;
+      margin-top: 3rem;
+    }
+
+    .mode-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.6rem;
+      transition: border-color .25s, transform .25s;
+      position: relative;
+      overflow: hidden;
+    }
+    .mode-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--card-clr, var(--blue)), transparent);
+      opacity: 0;
+      transition: opacity .25s;
+    }
+    .mode-card:hover { border-color: var(--border-bright); transform: translateY(-2px); }
+    .mode-card:hover::before { opacity: 1; }
+
+    .mode-card[data-c="blue"]   { --card-clr: #4a9eff; }
+    .mode-card[data-c="purple"] { --card-clr: #a78bfa; }
+    .mode-card[data-c="cyan"]   { --card-clr: #38c7ff; }
+    .mode-card[data-c="amber"]  { --card-clr: #f0b429; }
+
+    .mode-cmd {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .68rem;
+      font-weight: 600;
+      letter-spacing: .04em;
+      padding: .18rem .55rem;
+      border-radius: 3px;
+      margin-bottom: 1rem;
+      display: inline-block;
+    }
+    .mode-card[data-c="blue"]   .mode-cmd { color: #4a9eff; background: rgba(74,158,255,.1);  }
+    .mode-card[data-c="purple"] .mode-cmd { color: #a78bfa; background: rgba(167,139,250,.1); }
+    .mode-card[data-c="cyan"]   .mode-cmd { color: #38c7ff; background: rgba(56,199,255,.1);  }
+    .mode-card[data-c="amber"]  .mode-cmd { color: #f0b429; background: rgba(240,180,41,.1);  }
+
+    .mode-title {
+      font-size: 1.1rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: .45rem;
+    }
+    .mode-desc {
+      font-size: .875rem;
+      color: var(--text-secondary);
+      font-weight: 300;
+      line-height: 1.75;
+    }
+
+    /* ============================================================
+       HOW IT WORKS
+    ============================================================ */
+    .steps {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 2.5rem;
+      margin-top: 3.5rem;
+      position: relative;
+    }
+
+    /* connector line */
+    .steps::before {
+      content: '';
+      position: absolute;
+      top: 22px;
+      left: calc(100%/6);
+      right: calc(100%/6);
+      height: 1px;
+      background: linear-gradient(90deg, transparent, var(--border-bright), var(--border-bright), transparent);
+    }
+
+    .step { position: relative; }
+    .step-num {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .72rem;
+      color: var(--blue);
+      background: rgba(74,158,255,.1);
+      border: 1px solid rgba(74,158,255,.25);
+      width: 42px; height: 42px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 700;
+      margin-bottom: 1.25rem;
+    }
+    .step-title {
+      font-size: 1rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      margin-bottom: .5rem;
+    }
+    .step-desc {
+      font-size: .875rem;
+      color: var(--text-secondary);
+      font-weight: 300;
+      line-height: 1.8;
+    }
+    .step-cmd {
+      margin-top: .85rem;
+      display: inline-block;
+      padding: .35rem .7rem;
+      background: var(--bg-terminal);
+      border: 1px solid var(--border-bright);
+      border-radius: 4px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .75rem;
+      color: var(--green);
+    }
+    .step-cmd .p { color: var(--blue); }
+
+    /* ============================================================
+       PRIVACY
+    ============================================================ */
+    #privacy {
+      background: linear-gradient(to bottom, transparent, rgba(74,158,255,.018), transparent);
+    }
+
+    .privacy-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 5rem;
+      align-items: center;
+      margin-top: 0;
+    }
+
+    .check-list { margin-top: 1.75rem; display: flex; flex-direction: column; gap: .7rem; }
+    .check-item {
+      display: flex;
+      align-items: flex-start;
+      gap: .75rem;
+      font-size: .9rem;
+      color: var(--text-secondary);
+      font-weight: 300;
+    }
+    .check-icon { color: var(--green); flex-shrink: 0; margin-top: .1rem; font-size: 1rem; }
+
+    .stack-list { display: flex; flex-direction: column; gap: .75rem; }
+    .stack-row {
+      display: flex;
+      align-items: center;
+      gap: 1rem;
+      padding: .8rem 1rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      transition: border-color .2s;
+    }
+    .stack-row:hover { border-color: var(--border-bright); }
+    .stack-name {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .82rem;
+      font-weight: 600;
+      color: var(--text-primary);
+      flex: 0 0 120px;
+    }
+    .stack-role {
+      font-size: .82rem;
+      color: var(--text-secondary);
+      font-weight: 300;
+    }
+    .stack-tag {
+      margin-left: auto;
+      flex-shrink: 0;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .62rem;
+      color: var(--green);
+      padding: .12rem .45rem;
+      border: 1px solid rgba(34,197,94,.3);
+      border-radius: 3px;
+    }
+
+    /* ============================================================
+       INSTALL CTA
+    ============================================================ */
+    #install {
+      text-align: center;
+      padding-bottom: 120px;
+    }
+
+    .install-block {
+      margin: 2.25rem auto;
+      max-width: 460px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: .65rem;
+      padding: 1rem 1.75rem;
+      background: var(--bg-card);
+      border: 1px solid var(--border-bright);
+      border-radius: 9px;
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .92rem;
+      color: var(--green);
+    }
+    .install-block .p { color: var(--text-muted); }
+
+    .cta-btns { display: flex; gap: 1rem; justify-content: center; flex-wrap: wrap; }
+
+    /* ============================================================
+       FOOTER
+    ============================================================ */
+    footer {
+      border-top: 1px solid var(--border);
+      padding: 2rem 2.5rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 1rem;
+      max-width: 1180px;
+      margin: 0 auto;
+    }
+    .foot-logo {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: .85rem;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      gap: .35rem;
+    }
+    .foot-logo .s { color: var(--blue); }
+    .foot-copy { font-size: .78rem; color: var(--text-muted); }
+    .foot-links { display: flex; gap: 1.5rem; }
+    .foot-links a {
+      font-size: .8rem;
+      color: var(--text-muted);
+      transition: color .2s;
+    }
+    .foot-links a:hover { color: var(--text-secondary); }
+
+    /* ============================================================
+       SCROLL REVEAL
+    ============================================================ */
+    .reveal {
+      opacity: 0;
+      transform: translateY(20px);
+      transition: opacity .6s ease, transform .6s ease;
+    }
+    .reveal.in { opacity: 1; transform: translateY(0); }
+    .d1 { transition-delay: .08s; }
+    .d2 { transition-delay: .16s; }
+    .d3 { transition-delay: .24s; }
+    .d4 { transition-delay: .32s; }
+
+    /* ============================================================
+       RESPONSIVE
+    ============================================================ */
+    @media (max-width: 860px) {
+      .hero-inner { grid-template-columns: 1fr; text-align: center; gap: 3rem; }
+      .hero-sub { max-width: none; }
+      .cta-row, .hero-ctas { align-items: center; justify-content: center; }
+      .origin-grid { grid-template-columns: 1fr; gap: 2.5rem; }
+      .modes-grid { grid-template-columns: 1fr; }
+      .steps { grid-template-columns: 1fr; gap: 2rem; }
+      .steps::before { display: none; }
+      .privacy-grid { grid-template-columns: 1fr; gap: 2.5rem; }
+      .nav-links { display: none; }
+      .section-wrap { padding: 72px 1.5rem; }
+      hr.divider { margin: 0 1.5rem; }
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ============================================================ NAV -->
+  <nav>
+    <a href="#" class="nav-logo">
+      <span class="sym">&gt;_</span> mirror-self
+    </a>
+    <ul class="nav-links">
+      <li><a href="#origin">初衷</a></li>
+      <li><a href="#features">功能</a></li>
+      <li><a href="#how-it-works">工作原理</a></li>
+      <li><a href="#privacy">隐私</a></li>
+      <li>
+        <a href="https://github.com/JackSuuu/mirror-self" target="_blank" rel="noopener" class="nav-gh">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+          </svg>
+          GitHub
+        </a>
+      </li>
+    </ul>
+  </nav>
+
+
+  <!-- ============================================================ HERO -->
+  <section id="hero">
+    <div class="glow-left" aria-hidden="true"></div>
+    <div class="glow-right" aria-hidden="true"></div>
+
+    <div class="hero-inner">
+      <!-- left -->
+      <div>
+        <div class="badge"><span class="dot"></span>开源 · 完全本地 · MIT License</div>
+
+        <h1 class="hero-h1">
+          把记录，<br>
+          变成<span class="hl">观察</span>。
+        </h1>
+
+        <p class="hero-sub">
+          日记是最诚实的自己。mirror-self 将你多年的文字索引成
+          本地向量数据库，让你与过去的自己展开深度对话——
+          <strong>完全运行在你自己的设备上</strong>，数据永远不离开你。
+        </p>
+
+        <div class="install-pill">
+          <span class="prompt">$</span>
+          <span>pip install mirror-self</span>
+        </div>
+
+        <div class="cta-row">
+          <a href="#how-it-works" class="btn btn-solid">开始使用</a>
+          <a href="https://github.com/JackSuuu/mirror-self" target="_blank" rel="noopener" class="btn btn-outline">
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+            </svg>
+            查看源码
+          </a>
+        </div>
+      </div>
+
+      <!-- right: terminal mockup -->
+      <div>
+        <div class="term-wrap" role="img" aria-label="mirror-self 终端界面截图">
+          <div class="term-bar">
+            <div class="term-bar-title">&gt;_ mirror-self</div>
+            <div class="term-dots">
+              <div class="td td-r"></div>
+              <div class="td td-y"></div>
+              <div class="td td-g"></div>
+            </div>
+          </div>
+
+          <div class="term-grid">
+            <div class="term-left">
+              <div class="term-sect">Choose a mode</div>
+
+              <div class="t-mode active">
+                <div class="t-mode-name">chat</div>
+                <div class="t-mode-desc">Free-form conversation</div>
+              </div>
+              <div class="t-mode">
+                <div class="t-mode-name">reflect</div>
+                <div class="t-mode-desc">AI-generated questions<br>for today vs. past</div>
+              </div>
+              <div class="t-mode">
+                <div class="t-mode-name">compare</div>
+                <div class="t-mode-desc">Timeline analysis<br>on a topic</div>
+              </div>
+              <div class="t-mode">
+                <div class="t-mode-name">pattern</div>
+                <div class="t-mode-desc">Find recurring states<br>and get gentle warnings</div>
+              </div>
+            </div>
+
+            <div class="term-right">
+              <div class="t-label">mirror-self</div>
+              <div class="t-val">
+                Hello.<br>
+                I've indexed your journal.<br>
+                Shall we reflect on<br>
+                something today?
+              </div>
+
+              <div class="t-label">Today</div>
+              <div class="t-val">2026-06-29 (Mon)</div>
+
+              <div class="t-label">Indexed entries</div>
+              <div class="t-val">43 files &nbsp;·&nbsp; 742 entries</div>
+
+              <div class="t-label">Status</div>
+              <div class="t-val">
+                Ollama: qwen2.5 <span class="t-ok">✓</span><br>
+                Embed: nomic-embed <span class="t-ok">✓</span><br>
+                Database: ChromaDB <span class="t-ok">✓</span>
+              </div>
+
+              <div class="t-prompt">
+                <span class="sym">mirror-self &gt;</span>
+                <span class="cursor"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ ORIGIN -->
+  <hr class="divider">
+  <section id="origin">
+    <div class="section-wrap">
+      <div class="sec-eyebrow">初衷</div>
+      <h2 class="sec-h2">为什么做这个？</h2>
+
+      <div class="origin-grid">
+        <div>
+          <div class="origin-quote reveal">
+            "所有的记录，<br>
+            都是为了<em>更好地认识自己</em>。"
+          </div>
+
+          <div class="flow reveal d1">
+            <div class="flow-node">📓 手写记录</div>
+            <span class="flow-arr">→</span>
+            <div class="flow-node">🗄️ 语义索引</div>
+            <span class="flow-arr">→</span>
+            <div class="flow-node active">🪞 自我观察</div>
+          </div>
+        </div>
+
+        <div class="reveal d2">
+          <div class="origin-text">
+            <p>
+              我写日记有好几年了。每隔一段时间翻回去看，总会发现一些东西——
+              <strong>同样的困惑，在不同的年份反复出现</strong>；
+              情绪的高低潮有它自己的节律；很多当时以为会记住的感受，其实早已模糊。
+            </p>
+            <p>
+              我想把这些记录变得更<strong>可访问</strong>、更<strong>可交互</strong>。
+              不只是存档，而是成为自我观察的工具——
+              把散落在时间轴上的自己，聚集到同一个对话里，
+              让过去的记录真正成为认识自己的一部分。
+            </p>
+            <p>
+              mirror-self 就是这个想法的实现。它把日记文字变成
+              <strong>一个可以对话的版本的自己</strong>，完全运行在本地，
+              不依赖任何云服务，让你安心地把最私密的文字交给它。
+            </p>
+          </div>
+
+          <div class="persona-box reveal d3">
+            <div class="persona-label">The Observer · AI 人格设定</div>
+            <div class="persona-text">
+              "无所不知的观察者——读过你写下的每一篇日记，
+              不带评判地将规律反馈给你，
+              并在每次回应结尾留下一个真正值得思考的问题。"
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ FEATURES -->
+  <hr class="divider">
+  <section id="features">
+    <div class="section-wrap">
+      <div class="sec-eyebrow">功能模式</div>
+      <h2 class="sec-h2">四种方式，认识自己</h2>
+      <p class="sec-sub">
+        每种模式对应一种不同的自我观察角度——
+        从自由问答到跨年模式分析，让日记里的信息真正为你所用。
+      </p>
+
+      <div class="modes-grid">
+        <div class="mode-card reveal" data-c="blue">
+          <div class="mode-cmd">F1 · chat</div>
+          <div class="mode-title">自由对话</div>
+          <p class="mode-desc">
+            用自然语言向自己的日记提问。"我去年这时候在担心什么？"
+            "我对孤独的感受有没有变化？"——语义检索配合本地 LLM，
+            给出有完整上下文的真实回答。
+          </p>
+        </div>
+
+        <div class="mode-card reveal d1" data-c="purple">
+          <div class="mode-cmd">F2 · reflect</div>
+          <div class="mode-title">每日反思</div>
+          <p class="mode-desc">
+            自动读取近三个月的日记，生成三个深度反思问题。
+            不是泛泛的"你今天感觉怎么样"，
+            而是基于你真实写下的内容，让你看见自己没有意识到的模式。
+          </p>
+        </div>
+
+        <div class="mode-card reveal d2" data-c="cyan">
+          <div class="mode-cmd">F3 · compare</div>
+          <div class="mode-title">跨年对比</div>
+          <p class="mode-desc">
+            选择任意话题，对比它在不同年份里的演变轨迹。
+            "我对'工作'的态度，三年来发生了什么变化？"
+            时间线分析让成长变得清晰可见。
+          </p>
+        </div>
+
+        <div class="mode-card reveal d3" data-c="amber">
+          <div class="mode-cmd">F4 · pattern</div>
+          <div class="mode-title">情绪规律</div>
+          <p class="mode-desc">
+            基于情绪相似性搜索，找出反复出现的低落状态与触发因素，
+            温柔地提醒你："这种感受，你曾经经历过。
+            上一次，你是这样走出来的。"
+          </p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ HOW IT WORKS -->
+  <hr class="divider">
+  <section id="how-it-works">
+    <div class="section-wrap">
+      <div class="sec-eyebrow">工作原理</div>
+      <h2 class="sec-h2">三步开始</h2>
+      <p class="sec-sub">不需要账户，不需要 API Key，不需要联网。</p>
+
+      <div class="steps">
+        <div class="step reveal">
+          <div class="step-num">01</div>
+          <div class="step-title">准备你的 Markdown 日记</div>
+          <p class="step-desc">
+            将日记整理成 Markdown 文件，按月份或章节命名。
+            中英文混写完全支持，格式灵活。
+          </p>
+        </div>
+
+        <div class="step reveal d1">
+          <div class="step-num">02</div>
+          <div class="step-title">一键建立本地索引</div>
+          <p class="step-desc">
+            mirror-self 解析并分割你的日记，
+            用 Ollama 本地嵌入模型生成向量，
+            存储到设备上的 ChromaDB。
+          </p>
+          <div class="step-cmd"><span class="p">$</span> mirror-self init</div>
+        </div>
+
+        <div class="step reveal d2">
+          <div class="step-num">03</div>
+          <div class="step-title">开始与自己对话</div>
+          <p class="step-desc">
+            启动任意模式，进入终端 UI。
+            所有计算在本地完成，
+            你的文字从不离开你的设备。
+          </p>
+          <div class="step-cmd"><span class="p">$</span> mirror-self chat</div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ PRIVACY -->
+  <hr class="divider">
+  <section id="privacy">
+    <div class="section-wrap">
+      <div class="privacy-grid">
+        <div class="reveal">
+          <div class="sec-eyebrow">隐私优先</div>
+          <h2 class="sec-h2">你的日记，<br>只属于你。</h2>
+          <p class="sec-sub" style="margin-top:.75rem;">
+            日记是最私密的文字。mirror-self 从设计之初就是完全本地的——
+            没有服务器，没有云端，没有任何数据上传。
+          </p>
+
+          <div class="check-list">
+            <div class="check-item">
+              <span class="check-icon">✓</span>
+              数据永远不离开你的设备
+            </div>
+            <div class="check-item">
+              <span class="check-icon">✓</span>
+              不需要 OpenAI API Key 或任何云服务
+            </div>
+            <div class="check-item">
+              <span class="check-icon">✓</span>
+              完全开源，MIT 许可证，代码可审查
+            </div>
+            <div class="check-item">
+              <span class="check-icon">✓</span>
+              断网可用，随时离线运行
+            </div>
+            <div class="check-item">
+              <span class="check-icon">✓</span>
+              支持中英文双语日记
+            </div>
+          </div>
+        </div>
+
+        <div class="stack-list reveal d1">
+          <div class="stack-row">
+            <div class="stack-name">Ollama</div>
+            <div class="stack-role">本地大语言模型，支持 qwen2.5 等多种模型</div>
+            <div class="stack-tag">LOCAL</div>
+          </div>
+          <div class="stack-row">
+            <div class="stack-name">ChromaDB</div>
+            <div class="stack-role">本地向量数据库，存储所有语义嵌入</div>
+            <div class="stack-tag">LOCAL</div>
+          </div>
+          <div class="stack-row">
+            <div class="stack-name">nomic-embed</div>
+            <div class="stack-role">本地嵌入模型，用于语义检索与相似度计算</div>
+            <div class="stack-tag">LOCAL</div>
+          </div>
+          <div class="stack-row">
+            <div class="stack-name">Textual TUI</div>
+            <div class="stack-role">纯终端 UI，无需浏览器，无需网络</div>
+            <div class="stack-tag">LOCAL</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ INSTALL CTA -->
+  <hr class="divider">
+  <section id="install">
+    <div class="section-wrap">
+      <div class="sec-eyebrow" style="justify-content:center;">开始使用</div>
+      <h2 class="sec-h2" style="text-align:center;">准备好认识自己了吗？</h2>
+      <p class="sec-sub" style="margin:.75rem auto 0; text-align:center;">
+        需要先安装 <a href="https://ollama.com" target="_blank" rel="noopener" style="color:var(--blue)">Ollama</a>
+        并拉取 <code style="font-family:'JetBrains Mono',monospace; font-size:.85em; color:var(--text-secondary)">qwen2.5</code> 和
+        <code style="font-family:'JetBrains Mono',monospace; font-size:.85em; color:var(--text-secondary)">nomic-embed-text</code> 模型。
+      </p>
+
+      <div class="install-block">
+        <span class="p">$</span>
+        <span>pip install mirror-self</span>
+      </div>
+
+      <div class="cta-btns">
+        <a href="https://github.com/JackSuuu/mirror-self" target="_blank" rel="noopener" class="btn btn-solid">
+          <svg width="13" height="13" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
+            <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z"/>
+          </svg>
+          GitHub 仓库
+        </a>
+        <a href="https://github.com/JackSuuu/mirror-self#readme" target="_blank" rel="noopener" class="btn btn-outline">
+          阅读文档
+        </a>
+      </div>
+    </div>
+  </section>
+
+
+  <!-- ============================================================ FOOTER -->
+  <footer>
+    <div class="foot-logo"><span class="s">&gt;_</span> mirror-self</div>
+    <div class="foot-copy">MIT License &nbsp;·&nbsp; Open Source</div>
+    <div class="foot-links">
+      <a href="https://github.com/JackSuuu/mirror-self" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://github.com/JackSuuu/mirror-self/issues" target="_blank" rel="noopener">Issues</a>
+      <a href="https://github.com/JackSuuu/mirror-self#readme" target="_blank" rel="noopener">Docs</a>
+    </div>
+  </footer>
+
+
+  <!-- ============================================================ JS: scroll reveal -->
+  <script>
+    const io = new IntersectionObserver((entries) => {
+      entries.forEach(e => {
+        if (e.isIntersecting) {
+          e.target.classList.add('in');
+          io.unobserve(e.target);
+        }
+      });
+    }, { threshold: 0.12 });
+
+    document.querySelectorAll('.reveal').forEach(el => io.observe(el));
+
+    // also wire up cards/steps/rows that don't already have .reveal
+    document.querySelectorAll('.mode-card, .step, .stack-row').forEach((el, i) => {
+      if (!el.classList.contains('reveal')) {
+        el.classList.add('reveal');
+        const mod = i % 4;
+        if (mod === 1) el.classList.add('d1');
+        if (mod === 2) el.classList.add('d2');
+        if (mod === 3) el.classList.add('d3');
+        io.observe(el);
+      }
+    });
+  </script>
+</body>
+</html>
