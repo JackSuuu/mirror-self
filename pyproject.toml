@@ -1,0 +1,48 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mirror-self"
+version = "0.1.0"
+description = "Turn your personal journal into an AI-powered reflection partner"
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.10"
+keywords = ["journal", "reflection", "ai", "rag", "ollama", "cli", "self-awareness"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: End Users/Desktop",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Utilities",
+]
+dependencies = [
+    "chromadb>=0.5",
+    "typer>=0.12",
+    "rich>=13",
+    "textual>=0.80",
+    "httpx>=0.27",
+    "numpy>=1.26",
+    "scikit-learn>=1.4",
+    "python-dateutil>=2.9",
+    "zhon>=2.0",
+]
+
+[project.scripts]
+mirror-self = "mirrorself.cli:app"
+
+[project.urls]
+Homepage   = "https://github.com/yourusername/mirror-self"
+Repository = "https://github.com/yourusername/mirror-self"
+Issues     = "https://github.com/yourusername/mirror-self/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+mirrorself = ["py.typed"]

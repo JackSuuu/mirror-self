@@ -1,0 +1,68 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+pip-wheel-metadata/
+*.whl
+
+# Virtual environments
+.venv/
+venv/
+env/
+.env
+
+# Editable install artefacts
+*.editable*.pth
+src/*.egg-link
+
+# Distribution / packaging
+MANIFEST
+.installed.files
+
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.nox/
+
+# Type checking
+.mypy_cache/
+.dmypy.json
+.pyright/
+
+# macOS
+.DS_Store
+._*
+.Spotlight-V100
+.Trashes
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Journal (private — never commit real diary entries)
+Journal/
+
+# Original private package (pre-refactor, contains personal config)
+src/jackclone/
+
+# User config and ChromaDB data (private)
+~/.config/mirror-self/
+~/.local/share/mirror-self/
+
+# Textual CSS devtools
+.textual/
+
+# Logs
+*.log
