@@ -7,6 +7,8 @@ cross-time comparisons ("in 2023 you also felt this way...").
 """
 from __future__ import annotations
 
+import datetime
+import re
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -108,6 +110,51 @@ def _temporal_diversify(
     # Final sort by date for readability
     selected.sort(key=lambda e: (e.year, e.month, e.day))
     return selected
+
+
+# ── Year hint extraction ───────────────────────────────────────────────────────
+
+def extract_year_filter(query: str) -> Optional[int]:
+    """
+    If the query clearly refers to a single specific year, return that year so
+    the caller can pass it as year_filter to search().  Returns None when the
+    query spans multiple years or is not year-specific.
+
+    Handles:
+    - "2025年干了什么" → 2025
+    - "今年"           → current year
+    - "去年"           → current year - 1
+    - "前年"           → current year - 2
+    - "2023年和2024年" → None  (multiple years — don't filter)
+    """
+    today = datetime.date.today()
+    current_year = today.year
+
+    # Explicit 4-digit years written as "XXXXYear" (most reliable)
+    year_mentions = re.findall(r"(20\d{2})年", query)
+    unique_years = list({int(y) for y in year_mentions})
+
+    if len(unique_years) == 1:
+        return unique_years[0]
+    if len(unique_years) > 1:
+        return None  # cross-year query — let temporal diversify handle it
+
+    # No explicit year digits — check relative expressions
+    # Avoid matching if multiple relative words co-exist (e.g. "去年和今年")
+    relative_hits = sum([
+        "今年" in query,
+        "去年" in query,
+        "前年" in query,
+    ])
+    if relative_hits == 1:
+        if "今年" in query:
+            return current_year
+        if "去年" in query:
+            return current_year - 1
+        if "前年" in query:
+            return current_year - 2
+
+    return None
 
 
 # ── Public retrieval functions ─────────────────────────────────────────────────

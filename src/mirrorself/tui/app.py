@@ -438,7 +438,8 @@ class MirrorSelfApp(App):
         self.call_from_thread(self._clear_streaming)
         self.call_from_thread(self._loader_start, "Retrieving memories…")
 
-        entries = retriever.search(text, self.conf)
+        year_filter = retriever.extract_year_filter(text)
+        entries = retriever.search(text, self.conf, year_filter=year_filter)
         self.call_from_thread(self._update_memory_panel, entries)
         self.call_from_thread(self._loader_start, "Observer thinking…")
 
